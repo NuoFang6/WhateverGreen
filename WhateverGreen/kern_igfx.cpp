@@ -375,17 +375,28 @@ bool IGFX::processKext(KernelPatcher &patcher, size_t index, mach_vm_address_t a
 			0xEB, 0x41, 0x89, 0x86, 0x48, 0x11, 0x00, 0x00, 0x41, 0xC7, 0x86, 0x4C, 0x11, 0x00, 0x00, 0x07, 0x00, 0x00
 		};
 		
-		KernelPatcher::LookupPatch patch { &kextIntelICL, f2, r2, sizeof(f2), 1 };
-		patcher.applyLookupPatch(&patch);
+		// The lookup patches and the getGPUInfo hook below were written against older
+		// AppleIntelICL binaries and write into hardcoded IntelAccelerator member offsets.
+		// They can be disabled from the boot arguments to bisect early boot resets.
+		if (!checkKernelArgument("-igfxnoiclpatches")) {
+			KernelPatcher::LookupPatch patch { &kextIntelICL, f2, r2, sizeof(f2), 1 };
+			patcher.applyLookupPatch(&patch);
+			
+			KernelPatcher::LookupPatch patch2 { &kextIntelICL, f3, r3, sizeof(f3), 22 };
+			patcher.applyLookupPatch(&patch2);
+			
+			KernelPatcher::LookupPatch patch3 { &kextIntelICL, f3a, r3a, sizeof(f3a), 1 };
+			patcher.applyLookupPatch(&patch3);
+		} else {
+			SYSLOG("igfx", "skipping ICL lookup patches on request (-igfxnoiclpatches)");
+		}
 		
-		KernelPatcher::LookupPatch patch2 { &kextIntelICL, f3, r3, sizeof(f3), 22 };
-		patcher.applyLookupPatch(&patch2);
-		
-		KernelPatcher::LookupPatch patch3 { &kextIntelICL, f3a, r3a, sizeof(f3a), 1 };
-		patcher.applyLookupPatch(&patch3);
-		
-		KernelPatcher::RouteRequest request("__ZN16IntelAccelerator10getGPUInfoEv", getGPUInfo, ogetGPUInfo);
-		patcher.routeMultiple(index, &request, 1, address, size);
+		if (!checkKernelArgument("-igfxnoiclhook")) {
+			KernelPatcher::RouteRequest request("__ZN16IntelAccelerator10getGPUInfoEv", getGPUInfo, ogetGPUInfo);
+			patcher.routeMultiple(index, &request, 1, address, size);
+		} else {
+			SYSLOG("igfx", "skipping IntelAccelerator::getGPUInfo hook on request (-igfxnoiclhook)");
+		}
 		
 		if (disableIGTelemetry) {
 			auto symTelemetry = patcher.solveSymbol(index, "__ZN18IGTelemetryManager16prepareTelemetryEj");
