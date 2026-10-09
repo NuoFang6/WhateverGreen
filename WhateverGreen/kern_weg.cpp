@@ -427,7 +427,9 @@ void WEG::processBuiltinProperties(IORegistryEntry *device, DeviceInfo *info) {
 		}
 
 		// Update vtable I/O functions to ensure that a correct fake device ID is read.
-		if (fakeDevice && obj->getProperty("no-gfx-spoof") == nullptr) {
+		// -igfxnospoof must be usable from the boot arguments for bring-up bisection
+		// (the no-gfx-spoof device property requires editing the configuration).
+		if (fakeDevice && obj->getProperty("no-gfx-spoof") == nullptr && !checkKernelArgument("-igfxnospoof")) {
 			// Incorrect device-id means Intel drivers will most likely fail to do matching, error to log.
 			if (fakeDevice != acpiDevice) {
 				uint8_t bus = 0, dev = 0, fun = 0;
