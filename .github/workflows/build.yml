@@ -17,8 +17,9 @@ env:
 jobs:
   build:
     name: Build
-    # ci-bootstrap.sh pins Xcode 26.6.0, which is the default Xcode on the macos-26 image.
-    runs-on: macos-26
+    # Sequoia (macOS 15) runner: the build uses the macOS 15 SDK from Xcode 16.x,
+    # matching the target OS instead of the newest available toolchain.
+    runs-on: macos-15
     env:
       JOB_TYPE: BUILD
     steps:
@@ -31,9 +32,24 @@ jobs:
           repository: acidanthera/MacKernelSDK
           path: MacKernelSDK
 
-      - name: CI Bootstrap
+      - name: Select Sequoia Xcode
+        # ocbuild's ci-bootstrap.sh pins Xcode 26.6.0, which does not exist on the
+        # macOS 15 image, so pick the newest Xcode 16.x (macOS 15 SDK) locally.
         run: |
-          src=$(/usr/bin/curl -Lfs https://raw.githubusercontent.com/acidanthera/ocbuild/master/ci-bootstrap.sh) && eval "$src" || exit 1
+          xcode_app="$(/bin/ls -d /Applications/Xcode_16*.app 2>/dev/null | /usr/bin/sort -V | /usr/bin/tail -1)"
+          if [ -z "${xcode_app}" ]; then
+            xcode_app="/Applications/$(xcrun --find xcodebuild | /usr/bin/cut -d/ -f3)"
+          fi
+          echo "Using ${xcode_app}"
+          echo "DEVELOPER_DIR=${xcode_app}/Contents/Developer" >> "${GITHUB_ENV}"
+          export DEVELOPER_DIR="${xcode_app}/Contents/Developer"
+          xcodebuild -version
+          sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
+          echo "macOS SDK version: ${sdk_version}"
+          case "${sdk_version}" in
+            15.*) ;;
+            *) echo "ERROR: expected the macOS 15 (Sequoia) SDK, got ${sdk_version}"; exit 1 ;;
+          esac
 
       - name: Lilu Bootstrap
         run: |
@@ -48,7 +64,7 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: WhateverGreen
+          name: WhateverGreen-sequoia
           path: build/*/*.zip
 
       - name: Attach to Release
